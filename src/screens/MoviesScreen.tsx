@@ -3,8 +3,10 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, TextInput, View } f
 import { palette } from "@/theme/palette";
 import { useLibrary } from "@/context/LibraryContext";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { useMovieSearch } from "@/hooks/useMovieSearch";
+import { useGenres } from "@/hooks/useGenres";
+import { useMovieCatalog } from "@/hooks/useMovieCatalog";
 import type { Movie } from "@/models/Movie";
+import type { BrowseSort } from "@/services/MovieRepository";
 import { MovieCard } from "@/components/movies/MovieCard";
 import { MovieDetailsSheet } from "@/components/movies/MovieDetailsSheet";
 import { AppText } from "@/components/ui/AppText";
@@ -12,63 +14,65 @@ import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { TmdbAttribution } from "@/components/ui/TmdbAttribution";
 
-type SortKey = "metascore" | "imdb" | "name";
-
-const ALL_GENRES = "Todos";
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "metascore", label: "Metascore" },
-  { key: "imdb", label: "IMDb" },
-  { key: "name", label: "Nombre A–Z" },
+const SORT_OPTIONS: { key: BrowseSort; label: string }[] = [
+  { key: "popular", label: "Populares" },
+  { key: "rating", label: "Mejor valoradas" },
 ];
 
-/** Las películas sin dato van siempre al final al ordenar por puntaje. */
-function compareScores(a: number | null, b: number | null): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return b - a;
+/** Notas mínimas de TMDB (0–10) que se ofrecen como filtro. */
+const MIN_RATINGS = [6, 7, 8];
+
+interface LocalFilters {
+  genreName: string | null;
+  year: number | null;
+  minRating: number | null;
+  sort: BrowseSort;
 }
 
-function sortMovies(movies: Movie[], key: SortKey): Movie[] {
-  const copy = [...movies];
-  switch (key) {
-    case "name":
-      return copy.sort((a, b) => a.title.localeCompare(b.title));
-    case "imdb":
-      return copy.sort((a, b) => compareScores(a.imdbRating, b.imdbRating));
-    case "metascore":
-      return copy.sort((a, b) => compareScores(a.metascore, b.metascore));
-  }
+/**
+ * En una búsqueda, TMDB no admite filtros ni orden: se aplican en el
+ * dispositivo sobre los resultados ya cargados. Al explorar, en cambio, los
+ * filtra y ordena el servidor.
+ */
+function refineLocally(movies: Movie[], filters: LocalFilters): Movie[] {
+  const filtered = movies.filter(
+    (movie) =>
+      (filters.genreName === null || movie.genres.includes(filters.genreName)) &&
+      (filters.year === null || movie.year === filters.year) &&
+      (filters.minRating === null || (movie.rating !== null && movie.rating >= filters.minRating)),
+  );
+  return filters.sort === "rating"
+    ? [...filtered].sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1))
+    : filtered;
 }
 
-/** Catálogo real: busca en OMDb (que incluye el Metascore de Metacritic). */
+/** Catálogo de TMDB: películas populares, con búsqueda, orden y filtros. */
 export function MoviesScreen() {
   const { library, addMovie } = useLibrary();
   const [query, setQuery] = useState("");
-  const [genre, setGenre] = useState(ALL_GENRES);
-  const [sort, setSort] = useState<SortKey>("metascore");
+  const [sort, setSort] = useState<BrowseSort>("popular");
+  const [year, setYear] = useState<number | null>(null);
+  const [genreId, setGenreId] = useState<number | null>(null);
+  const [minRating, setMinRating] = useState<number | null>(null);
   const [selected, setSelected] = useState<Movie | null>(null);
 
   const debouncedQuery = useDebouncedValue(query, 450);
-  const search = useMovieSearch(debouncedQuery);
+  const catalog = useMovieCatalog({ query: debouncedQuery, sort, year, genreId, minRating });
+  const genres = useGenres();
 
-  const genres = useMemo(() => {
-    const unique = new Set<string>();
-    search.movies.forEach((movie) => movie.genres.forEach((item) => unique.add(item)));
-    return [ALL_GENRES, ...[...unique].sort((a, b) => a.localeCompare(b))];
-  }, [search.movies]);
-
-  // Si el género elegido ya no existe en los resultados, se vuelve a "Todos".
-  const activeGenre = genres.includes(genre) ? genre : ALL_GENRES;
+  // Los últimos tres años como atajo de filtro por estreno.
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear();
+    return [current, current - 1, current - 2];
+  }, []);
 
   const visible = useMemo(() => {
-    const filtered =
-      activeGenre === ALL_GENRES
-        ? search.movies
-        : search.movies.filter((movie) => movie.genres.includes(activeGenre));
-    return sortMovies(filtered, sort);
-  }, [search.movies, activeGenre, sort]);
+    if (!catalog.searching) return catalog.movies;
+    const genreName = genres.find((genre) => genre.id === genreId)?.name ?? null;
+    return refineLocally(catalog.movies, { genreName, year, minRating, sort });
+  }, [catalog.movies, catalog.searching, genres, genreId, year, minRating, sort]);
 
   // Se agrega un espacio vacío si el total es impar para que la última tarjeta no se estire.
   const items: (Movie | null)[] = visible.length % 2 === 1 ? [...visible, null] : visible;
@@ -85,7 +89,7 @@ export function MoviesScreen() {
           </AppText>
         </View>
         <AppText tone="dim" className="pb-[3px] text-[11px]">
-          {search.status === "ready" ? `${search.total} títulos` : ""}
+          {catalog.status === "ready" ? `${visible.length} títulos` : ""}
         </AppText>
       </View>
 
@@ -103,6 +107,7 @@ export function MoviesScreen() {
         />
       </View>
 
+      {/* Orden (excluyente) y nota mínima (se activa y desactiva al tocarla). */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -110,52 +115,89 @@ export function MoviesScreen() {
         className="mt-[10px] grow-0"
         contentContainerClassName="gap-2"
       >
-        {genres.map((item) => (
-          <Chip key={item} label={item} active={item === activeGenre} onPress={() => setGenre(item)} />
-        ))}
-      </ScrollView>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        className="mb-5 mt-2 grow-0"
-        contentContainerClassName="gap-2"
-      >
         {SORT_OPTIONS.map((option) => (
           <Chip
             key={option.key}
-            label={`Ordenar: ${option.label}`}
+            label={option.label}
             active={sort === option.key}
             onPress={() => setSort(option.key)}
           />
         ))}
+        {MIN_RATINGS.map((value) => (
+          <Chip
+            key={value}
+            label={`Nota ${value}+`}
+            active={minRating === value}
+            onPress={() => setMinRating(minRating === value ? null : value)}
+          />
+        ))}
       </ScrollView>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        className="mt-2 grow-0"
+        contentContainerClassName="gap-2"
+      >
+        <Chip label="Todos los años" active={year === null} onPress={() => setYear(null)} />
+        {yearOptions.map((option) => (
+          <Chip
+            key={option}
+            label={String(option)}
+            active={year === option}
+            onPress={() => setYear(option)}
+          />
+        ))}
+      </ScrollView>
+
+      {genres.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          className="mt-2 grow-0"
+          contentContainerClassName="gap-2"
+        >
+          <Chip label="Todos" active={genreId === null} onPress={() => setGenreId(null)} />
+          {genres.map((genre) => (
+            <Chip
+              key={genre.id}
+              label={genre.name}
+              active={genreId === genre.id}
+              onPress={() => setGenreId(genre.id)}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+
+      <View className="h-5" />
     </View>
   );
 
   let body: ReactNode = null;
-  if (search.status === "loading") {
+  if (catalog.status === "loading") {
     body = (
       <View className="items-center py-16">
         <ActivityIndicator color={palette.lime} />
       </View>
     );
-  } else if (search.status === "error") {
+  } else if (catalog.status === "error") {
     body = (
       <EmptyState
         title="No pudimos cargar películas"
-        message={search.error ?? "Ocurrió un error inesperado."}
+        message={catalog.error ?? "Ocurrió un error inesperado."}
       >
-        <PrimaryButton className="mt-4 self-stretch" label="Reintentar" onPress={search.retry} />
+        <PrimaryButton className="mt-4 self-stretch" label="Reintentar" onPress={catalog.retry} />
       </EmptyState>
     );
   } else if (visible.length === 0) {
     body = (
       <EmptyState
         message={
-          search.movies.length === 0
-            ? "No se encontraron películas con ese título."
-            : "Ninguna película cargada coincide con este género."
+          catalog.movies.length === 0
+            ? "No se encontraron películas con esos criterios."
+            : "Ninguna película cargada coincide con los filtros. Prueba con “Cargar más” o cambia los filtros."
         }
       />
     );
@@ -163,14 +205,14 @@ export function MoviesScreen() {
 
   const footer = (
     <View>
-      {search.status === "ready" && search.hasMore ? (
+      {catalog.status === "ready" && catalog.hasMore ? (
         <Pressable
           accessibilityRole="button"
-          onPress={search.loadMore}
-          disabled={search.loadingMore}
+          onPress={catalog.loadMore}
+          disabled={catalog.loadingMore}
           className="mt-4 h-11 items-center justify-center rounded-[14px] border border-outline bg-raised active:opacity-80"
         >
-          {search.loadingMore ? (
+          {catalog.loadingMore ? (
             <ActivityIndicator color={palette.lime} />
           ) : (
             <AppText tone="soft" font="bold" className="text-xs">
@@ -179,14 +221,14 @@ export function MoviesScreen() {
           )}
         </Pressable>
       ) : null}
-      {search.status === "ready" && search.error ? (
+      {catalog.status === "ready" && catalog.error ? (
         <AppText tone="danger" className="mt-3 text-center text-[11px]">
-          {search.error}
+          {catalog.error}
         </AppText>
       ) : null}
-      <AppText tone="dim" className="mx-5 mt-[22px] text-center text-[9px] leading-[14px]">
-        Datos de OMDb · Metascore © Metacritic
-      </AppText>
+      <View className="mx-5 mt-[22px]">
+        <TmdbAttribution compact />
+      </View>
     </View>
   );
 

@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icon } from "@/components/ui/Icon";
+import { TmdbAttribution } from "@/components/ui/TmdbAttribution";
 
 type ProfileTab = "watchlist" | "watched";
 
@@ -185,6 +186,13 @@ export function ProfileScreen() {
           </View>
         </View>
       )}
+
+      <View className="my-[25px] h-px bg-[#303430]" />
+
+      <AppText font="display" className="mb-3 text-lg tracking-[-0.5px]">
+        Créditos
+      </AppText>
+      <TmdbAttribution />
     </ScrollView>
   );
 }

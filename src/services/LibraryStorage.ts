@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Library } from "@/models/Library";
 
-const STORAGE_KEY = "framelist.library.v1";
+// v3: las películas ahora se identifican por su id de TMDB. Se cambia la clave
+// para ignorar las listas guardadas por versiones anteriores (otros ids y datos).
+const STORAGE_KEY = "framelist.library.v3";
 
 /** Persiste la biblioteca del usuario en el almacenamiento local del dispositivo. */
 export class LibraryStorage {

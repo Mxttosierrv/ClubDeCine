@@ -61,14 +61,14 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
               <AppText tone="soft" className="text-xs">
                 {featured.primaryGenre}
               </AppText>
-              <ScoreBadge value={featured.metascore} tier={featured.scoreTier} />
+              <ScoreBadge label={featured.ratingLabel} tier={featured.scoreTier} />
             </View>
             <AppText font="display" className="mb-[7px] mt-[9px] text-[30px] leading-[33px] tracking-[-1.2px]">
               {featured.title}
             </AppText>
-            {featured.plot ? (
+            {featured.description ? (
               <AppText tone="soft" numberOfLines={4} className="text-[13px] leading-[19px]">
-                {featured.plot}
+                {featured.description}
               </AppText>
             ) : null}
             <PrimaryButton

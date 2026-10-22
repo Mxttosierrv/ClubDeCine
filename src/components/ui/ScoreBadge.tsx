@@ -10,13 +10,14 @@ const TIER_BACKGROUND: Record<ScoreTier, string> = {
 };
 
 interface ScoreBadgeProps {
-  value: number | null;
+  /** Texto de la nota, por ejemplo "7.8" o "–" si no existe. */
+  label: string;
   tier: ScoreTier;
   compact?: boolean;
 }
 
-/** Insignia con el Metascore, coloreada según el rango de Metacritic. */
-export function ScoreBadge({ value, tier, compact = false }: ScoreBadgeProps) {
+/** Insignia con la puntuación de TMDB, coloreada según su nivel. */
+export function ScoreBadge({ label, tier, compact = false }: ScoreBadgeProps) {
   const size = compact ? "h-[18px] min-w-[21px] rounded px-1" : "h-6 min-w-[27px] rounded-md px-[5px]";
   return (
     <View className={`items-center justify-center ${size} ${TIER_BACKGROUND[tier]}`}>
@@ -25,7 +26,7 @@ export function ScoreBadge({ value, tier, compact = false }: ScoreBadgeProps) {
         font="heavy"
         className={compact ? "text-[8px]" : "text-[10px]"}
       >
-        {value ?? "–"}
+        {label}
       </AppText>
     </View>
   );

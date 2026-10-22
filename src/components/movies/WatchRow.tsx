@@ -79,7 +79,7 @@ export function WatchRow({
           <AppText tone="dim" className="text-[8px]">
             •
           </AppText>
-          <ScoreBadge value={movie.metascore} tier={movie.scoreTier} compact />
+          <ScoreBadge label={movie.ratingLabel} tier={movie.scoreTier} compact />
           {trailing ? (
             <>
               <AppText tone="dim" className="text-[8px]">
