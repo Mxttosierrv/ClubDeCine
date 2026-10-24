@@ -1,3 +1,5 @@
+import type { TmdbSort } from "@/models/SortOption";
+
 export type TmdbErrorKind =
   | "config"
   | "network"
@@ -16,18 +18,19 @@ export class TmdbError extends Error {
   }
 }
 
-/** Orden que aceptamos del servidor (valores de `sort_by` de /discover/movie). */
-export type DiscoverSort = "popularity.desc" | "vote_average.desc";
-
 export interface DiscoverParams {
-  sortBy: DiscoverSort;
+  /** Valor de `sort_by` de /discover/movie. */
+  sortBy: TmdbSort;
   page: number;
-  genreId?: number;
+  /** Ids de género ya unidos: "28,12" = todos los géneros (AND), "28|12" = alguno (OR). */
+  withGenres?: string;
   year?: number;
   /** Puntuación mínima (0–10). */
   minRating?: number;
   /** Votos mínimos, para que una nota alta con 1 voto no domine la lista. */
   minVotes?: number;
+  /** Solo películas estrenadas hasta esta fecha ("AAAA-MM-DD"), para excluir las no estrenadas. */
+  releaseUntil?: string;
 }
 
 /** Página sin interpretar: los elementos se convierten a `Movie` en el mapper. */
@@ -72,8 +75,9 @@ export class TmdbClient {
       include_video: "false",
       page: String(params.page),
     };
-    if (params.genreId !== undefined) query.with_genres = String(params.genreId);
+    if (params.withGenres) query.with_genres = params.withGenres;
     if (params.year !== undefined) query.primary_release_year = String(params.year);
+    if (params.releaseUntil) query["primary_release_date.lte"] = params.releaseUntil;
     if (params.minRating !== undefined) query["vote_average.gte"] = String(params.minRating);
     if (params.minVotes !== undefined) query["vote_count.gte"] = String(params.minVotes);
 

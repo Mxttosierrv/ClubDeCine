@@ -1,20 +1,8 @@
+import type { CatalogFilters } from "@/models/CatalogFilters";
 import type { Genre } from "@/models/Genre";
 import type { Movie } from "@/models/Movie";
 import { TmdbClient, TmdbError, type RawPage } from "./TmdbClient";
 import { TmdbMapper } from "./TmdbMapper";
-
-/** Criterios de orden del catálogo (lo que el usuario elige en pantalla). */
-export type BrowseSort = "popular" | "rating";
-
-export interface BrowseQuery {
-  sort: BrowseSort;
-  /** Solo películas estrenadas ese año; null = todos los años. */
-  year: number | null;
-  /** Solo ese género; null = todos. */
-  genreId: number | null;
-  /** Puntuación mínima de TMDB (0–10); null = cualquiera. */
-  minRating: number | null;
-}
 
 export interface MoviePage {
   movies: Movie[];
@@ -26,10 +14,13 @@ export interface MoviePage {
 /** TMDB solo entrega hasta la página 500. */
 const MAX_PAGE = 500;
 
-/** Votos mínimos al ordenar por nota, para no listar títulos con 1 voto. */
-const MIN_VOTES_FOR_RANKING = 300;
-/** Votos mínimos al filtrar por nota mínima. */
+/** Votos mínimos al filtrar por nota mínima, para no dar por buena una nota con 1 voto. */
 const MIN_VOTES_FOR_FILTER = 50;
+
+/** Fecha de hoy como "AAAA-MM-DD". */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /**
  * Punto de acceso a los datos de películas. Las pantallas dependen de esta
@@ -42,23 +33,22 @@ export class MovieRepository {
 
   constructor(private readonly client: TmdbClient) {}
 
-  /** Catálogo ordenado y filtrado (por defecto, las más populares). */
-  async browse(query: BrowseQuery, page: number): Promise<MoviePage> {
-    const minVotes =
-      query.sort === "rating"
-        ? MIN_VOTES_FOR_RANKING
-        : query.minRating !== null
-          ? MIN_VOTES_FOR_FILTER
-          : undefined;
+  /** Catálogo ordenado y filtrado por el servidor (por defecto, las más populares). */
+  async browse(filters: CatalogFilters, page: number): Promise<MoviePage> {
+    const option = filters.sortOption;
+    const minVotes = Math.max(option.minVotes, filters.minRating !== null ? MIN_VOTES_FOR_FILTER : 0);
+    // Comas = "todos los géneros" (AND); barras verticales = "alguno" (OR).
+    const withGenres = filters.genreIds.join(filters.genreMatch === "all" ? "," : "|");
 
     const [raw, names] = await Promise.all([
       this.client.discover({
-        sortBy: query.sort === "rating" ? "vote_average.desc" : "popularity.desc",
+        sortBy: option.tmdbSort,
         page,
-        genreId: query.genreId ?? undefined,
-        year: query.year ?? undefined,
-        minRating: query.minRating ?? undefined,
-        minVotes,
+        withGenres: withGenres || undefined,
+        year: filters.year ?? undefined,
+        minRating: filters.minRating ?? undefined,
+        minVotes: minVotes > 0 ? minVotes : undefined,
+        releaseUntil: option.untilToday ? todayIso() : undefined,
       }),
       this.genreNames(),
     ]);

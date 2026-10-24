@@ -13,7 +13,9 @@ export type IconName =
   | "list"
   | "spark"
   | "arrow-up"
-  | "arrow-down";
+  | "arrow-down"
+  | "x"
+  | "chevron-down";
 
 interface IconProps {
   name: IconName;
@@ -58,6 +60,8 @@ const GLYPHS: Record<IconName, ReactNode> = {
   spark: <Path d="m12 3 1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z" />,
   "arrow-up": <Path d="m6 15 6-6 6 6" />,
   "arrow-down": <Path d="m6 9 6 6 6-6" />,
+  x: <Path d="M6 6l12 12M18 6 6 18" />,
+  "chevron-down": <Path d="m6 9 6 6 6-6" />,
 };
 
 /** Íconos de trazo dibujados con SVG, tomados del diseño de Figma. */

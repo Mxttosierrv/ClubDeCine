@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CatalogFilters } from "@/models/CatalogFilters";
 import type { Movie } from "@/models/Movie";
-import type { BrowseSort, MoviePage } from "@/services/MovieRepository";
+import type { MoviePage } from "@/services/MovieRepository";
 import { movieRepository } from "@/services/container";
 
 export type CatalogStatus = "loading" | "ready" | "error";
@@ -18,11 +19,7 @@ interface CatalogState {
 interface CatalogParams {
   /** Texto de búsqueda; vacío = explorar el catálogo (populares por defecto). */
   query: string;
-  sort: BrowseSort;
-  year: number | null;
-  genreId: number | null;
-  /** Puntuación mínima de TMDB (0–10). */
-  minRating: number | null;
+  filters: CatalogFilters;
 }
 
 const INITIAL_STATE: CatalogState = {
@@ -39,20 +36,16 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Carga películas de TMDB con paginación: explora el catálogo (las más
- * populares o mejor valoradas, con filtros de año, género y nota mínima) o
- * busca por título. Ignora respuestas de consultas anteriores que lleguen
- * tarde, para que nunca se mezclen resultados.
+ * Carga películas de TMDB con paginación: explora el catálogo (el servidor
+ * ordena y filtra según `filters`) o busca por título. Ignora respuestas de
+ * consultas anteriores que lleguen tarde, para que nunca se mezclen resultados.
  */
-export function useMovieCatalog(params: CatalogParams) {
-  const query = params.query.trim();
-  // En una búsqueda los filtros no se envían al servidor (la API de búsqueda no
-  // los admite): no deben provocar nuevas consultas; la pantalla los aplica localmente.
+export function useMovieCatalog({ query: rawQuery, filters }: CatalogParams) {
+  const query = rawQuery.trim();
   const searching = query !== "";
-  const sort = searching ? "popular" : params.sort;
-  const year = searching ? null : params.year;
-  const genreId = searching ? null : params.genreId;
-  const minRating = searching ? null : params.minRating;
+  // La búsqueda de TMDB no admite filtros ni orden: en ese caso se aplican en el
+  // dispositivo y cambiarlos no debe provocar una consulta nueva.
+  const serverFilters = searching ? CatalogFilters.DEFAULT : filters;
 
   const [state, setState] = useState<CatalogState>(INITIAL_STATE);
   const requestId = useRef(0);
@@ -63,7 +56,7 @@ export function useMovieCatalog(params: CatalogParams) {
       try {
         const result: MoviePage = searching
           ? await movieRepository.search(query, page)
-          : await movieRepository.browse({ sort, year, genreId, minRating }, page);
+          : await movieRepository.browse(serverFilters, page);
         if (id !== requestId.current) return;
 
         const known = new Set(current.map((movie) => movie.id));
@@ -87,7 +80,7 @@ export function useMovieCatalog(params: CatalogParams) {
         }));
       }
     },
-    [searching, query, sort, year, genreId, minRating],
+    [searching, query, serverFilters],
   );
 
   // Nueva consulta cuando cambia la búsqueda o alguno de los filtros del servidor.
